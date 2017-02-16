@@ -11,7 +11,7 @@ import sx.blah.discord.util.MissingPermissionsException;
 import sx.blah.discord.util.RateLimitException;
 
 /**
- * Created by Bab on 16-2-2017.
+ * The base class that handles logging in, threading and the like.
  */
 public class AdagioClient {
     private final static Logger logger = LoggerFactory.getLogger(AdagioClient.class);
