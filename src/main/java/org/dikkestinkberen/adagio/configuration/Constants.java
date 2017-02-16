@@ -1,4 +1,4 @@
-package configuration;
+package org.dikkestinkberen.adagio.configuration;
 
 /**
  * Created by Bab on 16-2-2017.

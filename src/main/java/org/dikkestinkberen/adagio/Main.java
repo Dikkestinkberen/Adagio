@@ -1,5 +1,7 @@
-import client.AdagioClient;
-import configuration.Config;
+package org.dikkestinkberen.adagio;
+
+import org.dikkestinkberen.adagio.client.AdagioClient;
+import org.dikkestinkberen.adagio.configuration.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
