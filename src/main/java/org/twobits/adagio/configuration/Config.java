@@ -1,4 +1,4 @@
-package org.dikkestinkberen.adagio.configuration;
+package org.twobits.adagio.configuration;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -9,9 +9,10 @@ import java.io.InputStream;
 import java.util.Properties;
 
 /**
- * Created by Bab on 16-2-2017.
+ * The class that reads and supplies config information.
  */
 public final class Config {
+    @SuppressWarnings("unused")
     private final static Logger logger = LoggerFactory.getLogger(Config.class);
     public static String TOKEN;
 
@@ -27,8 +28,6 @@ public final class Config {
             prop.load(inputStream);
 
             TOKEN = prop.getProperty("token");
-        } catch (IOException e) {
-            throw e;
         }
     }
 }
