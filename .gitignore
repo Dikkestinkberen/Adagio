@@ -12,4 +12,8 @@
 hs_err_pid*
 
 # Intellij Idea
-.idea/
+.idea/libraries
+.idea/dictionaries
+
+# log file
+log.txt
