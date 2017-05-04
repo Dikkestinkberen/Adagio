@@ -71,3 +71,4 @@ log.txt
 /.idea/kotlinc.xml
 /ffprobe.exe
 /ffmpeg.exe
+/src/main/resources/config.properties
