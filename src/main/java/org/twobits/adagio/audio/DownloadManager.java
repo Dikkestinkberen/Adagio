@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.twobits.adagio.configuration.Config;
 import org.twobits.adagio.configuration.Constants;
+import sx.blah.discord.handle.obj.IMessage;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -75,7 +76,9 @@ public class DownloadManager implements Runnable {
      * @return A list of AudioFiles from the given url. Only contains more than one
      * if the url is a playlist. Can be empty if an error occurred.
      */
-    public static List<AudioFile> getAudioInfo(String url) {
+    public static List<AudioFile> getAudioInfo(IMessage message) {
+        String content = message.getContent();
+        String url = content.substring(content.indexOf(' ') + 1);
         List<String> command = new ArrayList<>(Config.YOUTUBE_DL_GET_INFO_COMMAND);
         command.add(url);
         logger.debug("Getting titles from url " + url);
@@ -104,7 +107,8 @@ public class DownloadManager implements Runnable {
                     results.add(new AudioFile(
                             audioInfo.getString("id"),
                             audioInfo.getString("title"),
-                            audioInfo.getString("webpage_url")
+                            audioInfo.getString("webpage_url"),
+                            message.getChannel()
                     ));
                 } else {
                     results.add(new AudioFile());

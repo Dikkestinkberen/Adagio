@@ -2,6 +2,7 @@ package org.twobits.adagio.audio;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.twobits.adagio.client.AdagioClient;
 import org.twobits.adagio.configuration.Constants;
 import sx.blah.discord.handle.obj.IGuild;
 import sx.blah.discord.handle.obj.IMessage;
@@ -19,7 +20,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Created by Bab on 16-3-2017.
  */
-public class AdagioAudioManager implements DownloadListener{
+public class AdagioAudioManager implements DownloadListener {
     @SuppressWarnings("unused")
     private final static Logger logger = LoggerFactory.getLogger(AdagioAudioManager.class);
 
@@ -28,6 +29,7 @@ public class AdagioAudioManager implements DownloadListener{
     private final ConcurrentLinkedQueue<AudioFile> downloadQueue = new ConcurrentLinkedQueue<>();
     private AtomicBoolean ready = new AtomicBoolean(true);
     private IGuild guild;
+    private IVoiceChannel channel;
 
     public AdagioAudioManager(IGuild guild) {
         this.guild = guild;
@@ -43,6 +45,8 @@ public class AdagioAudioManager implements DownloadListener{
             try {
                 player.queue(new File(folder + audioFile.getFileName()));
                 player.setPaused(false);
+                AudioPlayer.Track track = player.getPlaylist().get(player.getPlaylistSize() - 1);
+                AdagioClient.addTrackRequestChannel(track, audioFile.getRequestChannel());
             } catch (Exception e) {
                 logger.warn("Failed to queue audio file with id " + audioFile.getId() + ": ", e);
             }
@@ -66,11 +70,7 @@ public class AdagioAudioManager implements DownloadListener{
     }
 
     public void play(IMessage message) {
-        IVoiceChannel channel = message.getAuthor().getVoiceStateForGuild(guild).getChannel();
-        if (channel == null) {
-            logger.debug("User is not in a channel.");
-            return;
-        }
+        channel = message.getAuthor().getVoiceStateForGuild(guild).getChannel();
         if (channel.getGuild().equals(guild)) {
             try {
                 channel.join();
@@ -80,8 +80,7 @@ public class AdagioAudioManager implements DownloadListener{
             }
         }
 
-        String content = message.getContent();
-        List<AudioFile> audioFiles = DownloadManager.getAudioInfo(content.substring(content.indexOf(' ') + 1));
+        List<AudioFile> audioFiles = DownloadManager.getAudioInfo(message);
         for (AudioFile audioFile : audioFiles) {
             if (audioFile.isDownloadable()) {
                 if (ready.compareAndSet(true, false)) {
@@ -91,5 +90,16 @@ public class AdagioAudioManager implements DownloadListener{
                 }
             }
         }
+    }
+
+    public IVoiceChannel getChannel() {
+        if (!isPlaying()) {
+            return null;
+        }
+        return channel;
+    }
+
+    public boolean isPlaying() {
+        return !(ready.get() && downloadQueue.size() == 0 && player.getPlaylistSize() == 0);
     }
 }

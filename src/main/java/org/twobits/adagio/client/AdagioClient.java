@@ -7,20 +7,19 @@ import org.twobits.adagio.configuration.Config;
 import sx.blah.discord.api.ClientBuilder;
 import sx.blah.discord.api.IDiscordClient;
 import sx.blah.discord.api.events.EventSubscriber;
-import sx.blah.discord.handle.impl.events.guild.channel.message.MessageReceivedEvent;
 import sx.blah.discord.handle.impl.events.ReadyEvent;
-import sx.blah.discord.handle.obj.IChannel;
-import sx.blah.discord.handle.obj.IGuild;
-import sx.blah.discord.handle.obj.IMessage;
-import sx.blah.discord.handle.obj.IUser;
+import sx.blah.discord.handle.impl.events.guild.channel.message.MessageReceivedEvent;
+import sx.blah.discord.handle.obj.*;
 import sx.blah.discord.util.DiscordException;
 import sx.blah.discord.util.MissingPermissionsException;
 import sx.blah.discord.util.RateLimitException;
+import sx.blah.discord.util.audio.AudioPlayer;
 import sx.blah.discord.util.audio.events.TrackFinishEvent;
 import sx.blah.discord.util.audio.events.TrackStartEvent;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * The base class that handles logging in, threading and the like.
@@ -28,9 +27,9 @@ import java.util.Map;
 public class AdagioClient {
     @SuppressWarnings("unused")
     private final static Logger logger = LoggerFactory.getLogger(AdagioClient.class);
-    private final static Map<String, AdagioAudioManager> audioManagers = new LinkedHashMap<>();
+    private final static Map<Long, AdagioAudioManager> audioManagers = new LinkedHashMap<>();
+    private final static Map<AudioPlayer.Track, IChannel> audioRequestTextChannels = new ConcurrentHashMap<>();
     private static IDiscordClient client;
-    private IChannel audioChannel;
 
     public static void init() throws DiscordException {
         boolean done = false;
@@ -54,10 +53,18 @@ public class AdagioClient {
         }
     }
 
+    public static void addTrackRequestChannel(AudioPlayer.Track track, IChannel requestChannel) {
+        audioRequestTextChannels.put(track, requestChannel);
+    }
+
+    public static void removeTrackRequestChannel(AudioPlayer.Track track) {
+        audioRequestTextChannels.remove(track);
+    }
+
     @EventSubscriber
     public void onReady(ReadyEvent event) {
         for (IGuild guild : client.getGuilds()) {
-            audioManagers.put(guild.getStringID(), new AdagioAudioManager(guild));
+            audioManagers.put(guild.getLongID(), new AdagioAudioManager(guild));
         }
     }
 
@@ -78,19 +85,27 @@ public class AdagioClient {
         String command = content.substring(0, content.indexOf(' '));
         switch (command) {
             case "play":
-                audioManagers.get(message.getGuild().getStringID()).play(message);
-                audioChannel = message.getChannel();
+                IVoiceChannel requesterVoiceChannel = user.getVoiceStateForGuild(message.getGuild()).getChannel();
+                AdagioAudioManager currentManager = audioManagers.get(message.getGuild().getLongID());
+                if (requesterVoiceChannel == null) {
+                    sendMessage(message.getChannel(), "You are not connected to a voice channel.");
+                } else if (currentManager.isPlaying() && currentManager.getChannel() != requesterVoiceChannel) {
+                    sendMessage(message.getChannel(), "The bot is already playing in a different channel.");
+                } else {
+                    currentManager.play(message);
+                }
         }
     }
 
     @EventSubscriber
     public void onTrackStart(TrackStartEvent event) throws RateLimitException, DiscordException, MissingPermissionsException {
-        sendMessage(audioChannel, "Now Playing!");
+        sendMessage(audioRequestTextChannels.get(event.getTrack()), "Now Playing!");
     }
 
     @EventSubscriber
     public void onTrackFinish(TrackFinishEvent event) throws RateLimitException, DiscordException, MissingPermissionsException {
-        sendMessage(audioChannel, "Finished!");
+        sendMessage(audioRequestTextChannels.get(event.getOldTrack()), "Finished!");
+        removeTrackRequestChannel(event.getOldTrack());
     }
 
     @SuppressWarnings({"UnusedReturnValue", "unused"})

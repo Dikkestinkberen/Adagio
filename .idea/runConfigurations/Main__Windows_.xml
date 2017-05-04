@@ -19,6 +19,7 @@
     <envs />
     <method>
       <option name="ToolBeforeRunTask" enabled="true" actionId="Tool_External Tools_clean" />
+      <option name="Make" enabled="true" />
     </method>
   </configuration>
 </component>
