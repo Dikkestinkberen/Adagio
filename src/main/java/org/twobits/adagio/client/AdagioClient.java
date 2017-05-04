@@ -7,7 +7,7 @@ import org.twobits.adagio.configuration.Config;
 import sx.blah.discord.api.ClientBuilder;
 import sx.blah.discord.api.IDiscordClient;
 import sx.blah.discord.api.events.EventSubscriber;
-import sx.blah.discord.handle.impl.events.MessageReceivedEvent;
+import sx.blah.discord.handle.impl.events.guild.channel.message.MessageReceivedEvent;
 import sx.blah.discord.handle.impl.events.ReadyEvent;
 import sx.blah.discord.handle.obj.IChannel;
 import sx.blah.discord.handle.obj.IGuild;
@@ -57,7 +57,7 @@ public class AdagioClient {
     @EventSubscriber
     public void onReady(ReadyEvent event) {
         for (IGuild guild : client.getGuilds()) {
-            audioManagers.put(guild.getID(), new AdagioAudioManager(guild));
+            audioManagers.put(guild.getStringID(), new AdagioAudioManager(guild));
         }
     }
 
@@ -78,7 +78,7 @@ public class AdagioClient {
         String command = content.substring(0, content.indexOf(' '));
         switch (command) {
             case "play":
-                audioManagers.get(message.getGuild().getID()).play(message);
+                audioManagers.get(message.getGuild().getStringID()).play(message);
                 audioChannel = message.getChannel();
         }
     }

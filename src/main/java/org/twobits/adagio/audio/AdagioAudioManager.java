@@ -66,14 +66,17 @@ public class AdagioAudioManager implements DownloadListener{
     }
 
     public void play(IMessage message) {
-        List<IVoiceChannel> potentialChannels = message.getAuthor().getConnectedVoiceChannels();
-        for (IVoiceChannel channel : potentialChannels) {
-            if (channel.getGuild().equals(guild)) {
-                try {
-                    channel.join();
-                } catch (MissingPermissionsException e) {
-                    logger.debug("No permission to join " + channel.getName());
-                }
+        IVoiceChannel channel = message.getAuthor().getVoiceStateForGuild(guild).getChannel();
+        if (channel == null) {
+            logger.debug("User is not in a channel.");
+            return;
+        }
+        if (channel.getGuild().equals(guild)) {
+            try {
+                channel.join();
+            } catch (MissingPermissionsException e) {
+                logger.debug("No permission to join " + channel.getName());
+                return;
             }
         }
 
