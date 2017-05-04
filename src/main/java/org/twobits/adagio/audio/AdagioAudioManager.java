@@ -31,7 +31,7 @@ public class AdagioAudioManager implements DownloadListener{
 
     public AdagioAudioManager(IGuild guild) {
         this.guild = guild;
-        Path currentRelativePath = Paths.get( Constants.YOUTUBE_DL_DOWNLOAD_FOLDER + File.separator + guild.getID());
+        Path currentRelativePath = Paths.get( Constants.YOUTUBE_DL_DOWNLOAD_FOLDER + File.separator + guild.getStringID());
         this.folder = currentRelativePath.toAbsolutePath().toString() + File.separator;
         player = AudioPlayer.getAudioPlayerForGuild(guild);
     }
