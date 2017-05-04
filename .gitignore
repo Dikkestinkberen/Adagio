@@ -72,5 +72,3 @@ log.txt
 /ffprobe.exe
 /ffmpeg.exe
 /src/main/resources/config.properties
-!/.idea/uiDesigner.xml
-/.idea/uiDesigner.xml
