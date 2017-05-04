@@ -1,6 +1,6 @@
 #This audioFile contains the org.twobits.adagio.configuration for Adagio.
 #API Client info
-token = INSERT YOUR TOKEN HERE
+token = INSERT TOKEN HERE
 #Insert a path to a youtube-dl executable here. On Windows, don't forget to use double backslashes!
-youtubedlCommand = C:\\Users\\Bab\\IdeaProjects\\Adagio\\youtube-dl.exe
+youtubedlCommand = INSERT PATH HERE
 prefix = !
