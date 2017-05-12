@@ -64,6 +64,52 @@ public class AdagioClient {
         AudioSourceManagers.registerRemoteSources(playerManager);
     }
 
+    @EventSubscriber
+    public void onMessage(MessageReceivedEvent event) throws MissingPermissionsException, DiscordException {
+        IMessage message = event.getMessage();
+        IUser user = message.getAuthor();
+        if (user.isBot()) {
+            return;
+        }
+
+        String content = message.getContent();
+        if (!content.startsWith(Config.PREFIX)) {
+            return;
+        }
+
+        content = content.substring(Config.PREFIX.length());
+        String command = content.substring(0, content.indexOf(' '));
+        switch (command) {
+            case "play":
+                logger.debug("Play command issued: " + content);
+                IVoiceChannel requesterVoiceChannel = user.getVoiceStateForGuild(message.getGuild()).getChannel();
+                IVoiceChannel currentVoiceChannel = getCurrentVoiceChannel(message.getGuild());
+                AudioPlayer player = getGuildAudioPlayer(message.getGuild()).player;
+                if (requesterVoiceChannel == null) {
+                    sendMessage(message.getChannel(), "You are not connected to a voice channel.");
+                } else if (player.getPlayingTrack() != null && requesterVoiceChannel != currentVoiceChannel) {
+                    sendMessage(message.getChannel(), "The bot is already playing in a different channel.");
+                } else {
+                    logger.debug("Accepted play command.");
+                    setCurrentVoiceChannel(message.getGuild(), requesterVoiceChannel);
+                    loadAndPlay(message, content.substring(5));
+                }
+        }
+    }
+
+    @SuppressWarnings({"UnusedReturnValue", "unused"})
+    public static boolean sendMessage(IChannel channel, String message) throws MissingPermissionsException, DiscordException {
+        try {
+            logger.debug(String.format("Sending message:\t%s", message));
+            channel.sendMessage(message);
+            logger.trace("Message sent.");
+            return true;
+        } catch (RateLimitException e) {
+            logger.warn("Too many messages, slow down.");
+            return false;
+        }
+    }
+
     private synchronized GuildMusicManager getGuildAudioPlayer(IGuild guild) {
         long guildId = guild.getLongID();
         GuildMusicManager musicManager = musicManagers.computeIfAbsent(guildId,
@@ -118,51 +164,5 @@ public class AdagioClient {
     private void play(IMessage request, GuildMusicManager musicManager, AudioTrack track) {
         getCurrentVoiceChannel(request.getGuild()).join();
         musicManager.scheduler.queue(request, track);
-    }
-
-    @EventSubscriber
-    public void onMessage(MessageReceivedEvent event) throws MissingPermissionsException, DiscordException {
-        IMessage message = event.getMessage();
-        IUser user = message.getAuthor();
-        if (user.isBot()) {
-            return;
-        }
-
-        String content = message.getContent();
-        if (!content.startsWith(Config.PREFIX)) {
-            return;
-        }
-
-        content = content.substring(Config.PREFIX.length());
-        String command = content.substring(0, content.indexOf(' '));
-        switch (command) {
-            case "play":
-                logger.debug("Play command issued: " + content);
-                IVoiceChannel requesterVoiceChannel = user.getVoiceStateForGuild(message.getGuild()).getChannel();
-                IVoiceChannel currentVoiceChannel = getCurrentVoiceChannel(message.getGuild());
-                AudioPlayer player = getGuildAudioPlayer(message.getGuild()).player;
-                if (requesterVoiceChannel == null) {
-                    sendMessage(message.getChannel(), "You are not connected to a voice channel.");
-                } else if (player.getPlayingTrack() != null && requesterVoiceChannel != currentVoiceChannel) {
-                    sendMessage(message.getChannel(), "The bot is already playing in a different channel.");
-                } else {
-                    logger.debug("Accepted play command.");
-                    setCurrentVoiceChannel(message.getGuild(), requesterVoiceChannel);
-                    loadAndPlay(message, content.substring(5));
-                }
-        }
-    }
-
-    @SuppressWarnings({"UnusedReturnValue", "unused"})
-    public static boolean sendMessage(IChannel channel, String message) throws MissingPermissionsException, DiscordException {
-        try {
-            logger.debug(String.format("Sending message:\t%s", message));
-            channel.sendMessage(message);
-            logger.trace("Message sent.");
-            return true;
-        } catch (RateLimitException e) {
-            logger.warn("Too many messages, slow down.");
-            return false;
-        }
     }
 }
