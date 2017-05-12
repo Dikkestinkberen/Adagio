@@ -1,8 +1,16 @@
 package org.twobits.adagio.client;
 
+import com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler;
+import com.sedmelluq.discord.lavaplayer.player.AudioPlayer;
+import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager;
+import com.sedmelluq.discord.lavaplayer.player.DefaultAudioPlayerManager;
+import com.sedmelluq.discord.lavaplayer.source.AudioSourceManagers;
+import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
+import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist;
+import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.twobits.adagio.audio.AdagioAudioManager;
+import org.twobits.adagio.audio.GuildMusicManager;
 import org.twobits.adagio.configuration.Config;
 import sx.blah.discord.api.ClientBuilder;
 import sx.blah.discord.api.IDiscordClient;
@@ -13,11 +21,7 @@ import sx.blah.discord.handle.obj.*;
 import sx.blah.discord.util.DiscordException;
 import sx.blah.discord.util.MissingPermissionsException;
 import sx.blah.discord.util.RateLimitException;
-import sx.blah.discord.util.audio.AudioPlayer;
-import sx.blah.discord.util.audio.events.TrackFinishEvent;
-import sx.blah.discord.util.audio.events.TrackStartEvent;
 
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -27,9 +31,10 @@ import java.util.concurrent.ConcurrentHashMap;
 public class AdagioClient {
     @SuppressWarnings("unused")
     private final static Logger logger = LoggerFactory.getLogger(AdagioClient.class);
-    private final static Map<Long, AdagioAudioManager> audioManagers = new LinkedHashMap<>();
-    private final static Map<AudioPlayer.Track, IChannel> audioRequestTextChannels = new ConcurrentHashMap<>();
     private static IDiscordClient client;
+    private final static Map<Long, GuildMusicManager> musicManagers = new ConcurrentHashMap<>();
+    private final static Map<Long, IVoiceChannel> currentVoiceChannels = new ConcurrentHashMap<>();
+    private static AudioPlayerManager playerManager;
 
     public static void init() throws DiscordException {
         boolean done = false;
@@ -53,19 +58,66 @@ public class AdagioClient {
         }
     }
 
-    public static void addTrackRequestChannel(AudioPlayer.Track track, IChannel requestChannel) {
-        audioRequestTextChannels.put(track, requestChannel);
-    }
-
-    public static void removeTrackRequestChannel(AudioPlayer.Track track) {
-        audioRequestTextChannels.remove(track);
-    }
-
     @EventSubscriber
     public void onReady(ReadyEvent event) {
-        for (IGuild guild : client.getGuilds()) {
-            audioManagers.put(guild.getLongID(), new AdagioAudioManager(guild));
+        playerManager = new DefaultAudioPlayerManager();
+        AudioSourceManagers.registerRemoteSources(playerManager);
+    }
+
+    private synchronized GuildMusicManager getGuildAudioPlayer(IGuild guild) {
+        long guildId = guild.getLongID();
+        GuildMusicManager musicManager = musicManagers.computeIfAbsent(guildId,
+                k -> new GuildMusicManager(playerManager, guild));
+
+        guild.getAudioManager().setAudioProvider(musicManager.getAudioProvider());
+
+        return musicManager;
+    }
+
+    private static IVoiceChannel getCurrentVoiceChannel(IGuild guild) {
+        return currentVoiceChannels.get(guild.getLongID());
+    }
+
+    private static void setCurrentVoiceChannel(IGuild guild, IVoiceChannel channel) {
+        if (channel != null) {
+            currentVoiceChannels.put(guild.getLongID(), channel);
+        } else {
+            currentVoiceChannels.remove(guild.getLongID());
         }
+    }
+
+    private void loadAndPlay(IMessage request, String trackUrl) {
+        GuildMusicManager musicManager = getGuildAudioPlayer(request.getGuild());
+
+        playerManager.loadItemOrdered(musicManager, trackUrl, new AudioLoadResultHandler() {
+            @Override
+            public void trackLoaded(AudioTrack audioTrack) {
+                //Song added to queue, can now be played.
+                sendMessage(request.getChannel(), "Song added to queue: " + audioTrack.getInfo().title);
+
+                play(request, musicManager, audioTrack);
+            }
+
+            @Override
+            public void playlistLoaded(AudioPlaylist audioPlaylist) {
+
+            }
+
+            @Override
+            public void noMatches() {
+                logger.info("No matches.");
+            }
+
+            @Override
+            public void loadFailed(FriendlyException e) {
+                logger.info("Load failed: ", e);
+            }
+        });
+    }
+
+    private void play(IMessage request, GuildMusicManager musicManager, AudioTrack track) {
+        getCurrentVoiceChannel(request.getGuild()).join();
+        musicManager.scheduler.queue(request, track);
     }
 
     @EventSubscriber
@@ -85,27 +137,20 @@ public class AdagioClient {
         String command = content.substring(0, content.indexOf(' '));
         switch (command) {
             case "play":
+                logger.debug("Play command issued: " + content);
                 IVoiceChannel requesterVoiceChannel = user.getVoiceStateForGuild(message.getGuild()).getChannel();
-                AdagioAudioManager currentManager = audioManagers.get(message.getGuild().getLongID());
+                IVoiceChannel currentVoiceChannel = getCurrentVoiceChannel(message.getGuild());
+                AudioPlayer player = getGuildAudioPlayer(message.getGuild()).player;
                 if (requesterVoiceChannel == null) {
                     sendMessage(message.getChannel(), "You are not connected to a voice channel.");
-                } else if (currentManager.isPlaying() && currentManager.getChannel() != requesterVoiceChannel) {
+                } else if (player.getPlayingTrack() != null && requesterVoiceChannel != currentVoiceChannel) {
                     sendMessage(message.getChannel(), "The bot is already playing in a different channel.");
                 } else {
-                    currentManager.play(message);
+                    logger.debug("Accepted play command.");
+                    setCurrentVoiceChannel(message.getGuild(), requesterVoiceChannel);
+                    loadAndPlay(message, content.substring(5));
                 }
         }
-    }
-
-    @EventSubscriber
-    public void onTrackStart(TrackStartEvent event) throws RateLimitException, DiscordException, MissingPermissionsException {
-        sendMessage(audioRequestTextChannels.get(event.getTrack()), "Now Playing!");
-    }
-
-    @EventSubscriber
-    public void onTrackFinish(TrackFinishEvent event) throws RateLimitException, DiscordException, MissingPermissionsException {
-        sendMessage(audioRequestTextChannels.get(event.getOldTrack()), "Finished!");
-        removeTrackRequestChannel(event.getOldTrack());
     }
 
     @SuppressWarnings({"UnusedReturnValue", "unused"})

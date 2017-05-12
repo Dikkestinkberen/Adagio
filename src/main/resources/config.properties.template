@@ -2,6 +2,4 @@
 #Rename this file to config.properties or the bot will not work.
 #API Client info
 token = INSERT TOKEN HERE
-#Insert a path to a youtube-dl executable here. On Windows, don't forget to use double backslashes!
-youtubedlCommand = INSERT PATH HERE
 prefix = !
