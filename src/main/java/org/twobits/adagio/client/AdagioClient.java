@@ -9,6 +9,7 @@ import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.twobits.adagio.simpletools.SimpleToolManager;
 import org.twobits.adagio.audio.GuildMusicManager;
 import org.twobits.adagio.configuration.Config;
 import sx.blah.discord.api.ClientBuilder;
@@ -32,6 +33,7 @@ public class AdagioClient {
     private final static Logger logger = LoggerFactory.getLogger(AdagioClient.class);
     public static IDiscordClient client;
     private final static Map<Long, GuildMusicManager> musicManagers = new ConcurrentHashMap<>();
+    private final static Map<Long, SimpleToolManager> simpleToolManagers = new ConcurrentHashMap<>();
     private final static Map<Long, IVoiceChannel> currentVoiceChannels = new ConcurrentHashMap<>();
     private static AudioPlayerManager playerManager;
 
@@ -118,6 +120,16 @@ public class AdagioClient {
                     sendMessage(message.getChannel(), "Song skipped.");
                     musicManager.scheduler.skip();
                 }
+                return;
+            case "roll":
+                logger.debug("Roll command issued: " + content);
+                SimpleToolManager toolManager = getSimpleToolManager(message.getGuild());
+                try {
+                    sendMessage(message.getChannel(), "Roll result (" + content.substring(5) + "): " + toolManager.rollDice(content.substring(5)));
+                } catch (IllegalArgumentException e) {
+                    logger.info("Dice roll failed in '" + message.getChannel().getName() + "'", e);
+                }
+                return;
         }
     }
 
@@ -142,6 +154,14 @@ public class AdagioClient {
         guild.getAudioManager().setAudioProvider(musicManager.getAudioProvider());
 
         return musicManager;
+    }
+
+    private synchronized SimpleToolManager getSimpleToolManager(IGuild guild) {
+        long guildId = guild.getLongID();
+        SimpleToolManager toolManager = simpleToolManagers.computeIfAbsent(guildId,
+                k -> new SimpleToolManager());
+
+        return toolManager;
     }
 
     private static IVoiceChannel getCurrentVoiceChannel(IGuild guild) {
