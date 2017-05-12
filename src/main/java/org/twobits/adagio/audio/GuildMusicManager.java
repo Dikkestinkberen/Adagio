@@ -19,4 +19,8 @@ public class GuildMusicManager {
     public AudioProvider getAudioProvider() {
         return new AudioProvider(player);
     }
+
+    public boolean hasSong() {
+        return scheduler.hasSong();
+    }
 }

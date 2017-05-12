@@ -1,7 +1,6 @@
 package org.twobits.adagio.client;
 
 import com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler;
-import com.sedmelluq.discord.lavaplayer.player.AudioPlayer;
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager;
 import com.sedmelluq.discord.lavaplayer.player.DefaultAudioPlayerManager;
 import com.sedmelluq.discord.lavaplayer.source.AudioSourceManagers;
@@ -31,7 +30,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class AdagioClient {
     @SuppressWarnings("unused")
     private final static Logger logger = LoggerFactory.getLogger(AdagioClient.class);
-    private static IDiscordClient client;
+    public static IDiscordClient client;
     private final static Map<Long, GuildMusicManager> musicManagers = new ConcurrentHashMap<>();
     private final static Map<Long, IVoiceChannel> currentVoiceChannels = new ConcurrentHashMap<>();
     private static AudioPlayerManager playerManager;
@@ -77,22 +76,47 @@ public class AdagioClient {
             return;
         }
 
+        message.delete();
+
         content = content.substring(Config.PREFIX.length());
-        String command = content.substring(0, content.indexOf(' '));
+        String command;
+        try {
+            command = content.substring(0, content.indexOf(' '));
+        } catch (StringIndexOutOfBoundsException e) {
+            command = content;
+        }
+
+        IVoiceChannel requesterVoiceChannel, currentVoiceChannel;
+        GuildMusicManager musicManager;
         switch (command) {
             case "play":
                 logger.debug("Play command issued: " + content);
-                IVoiceChannel requesterVoiceChannel = user.getVoiceStateForGuild(message.getGuild()).getChannel();
-                IVoiceChannel currentVoiceChannel = getCurrentVoiceChannel(message.getGuild());
-                AudioPlayer player = getGuildAudioPlayer(message.getGuild()).player;
+                requesterVoiceChannel = user.getVoiceStateForGuild(message.getGuild()).getChannel();
+                currentVoiceChannel = getCurrentVoiceChannel(message.getGuild());
+                musicManager = getGuildAudioPlayer(message.getGuild());
                 if (requesterVoiceChannel == null) {
                     sendMessage(message.getChannel(), "You are not connected to a voice channel.");
-                } else if (player.getPlayingTrack() != null && requesterVoiceChannel != currentVoiceChannel) {
+                } else if (musicManager.hasSong() && requesterVoiceChannel != currentVoiceChannel) {
                     sendMessage(message.getChannel(), "The bot is already playing in a different channel.");
                 } else {
                     logger.debug("Accepted play command.");
                     setCurrentVoiceChannel(message.getGuild(), requesterVoiceChannel);
                     loadAndPlay(message, content.substring(5));
+                }
+                return;
+            case "skip":
+                logger.debug("Skip command issued.");
+                requesterVoiceChannel = user.getVoiceStateForGuild(message.getGuild()).getChannel();
+                currentVoiceChannel = getCurrentVoiceChannel(message.getGuild());
+                musicManager = getGuildAudioPlayer(message.getGuild());
+                if (!musicManager.hasSong()) {
+                    sendMessage(message.getChannel(), "The bot is not currently playing any music.");
+                } else if (requesterVoiceChannel == null || requesterVoiceChannel != currentVoiceChannel) {
+                    sendMessage(message.getChannel(), "You are not in the same channel as the bot.");
+                } else {
+                    logger.debug("Accepted skip command.");
+                    sendMessage(message.getChannel(), "Song skipped.");
+                    musicManager.scheduler.skip();
                 }
         }
     }

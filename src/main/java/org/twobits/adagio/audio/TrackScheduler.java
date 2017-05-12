@@ -33,27 +33,55 @@ public class TrackScheduler implements AudioEventListener {
     @Override
     public void onEvent(AudioEvent event) {
         if(event instanceof PlayerPauseEvent) {
-            event.player.setPaused(true);
+            currentTrack.request.getChannel().sendMessage("Player paused.");
         } else if(event instanceof PlayerResumeEvent) {
-            event.player.setPaused(false);
+            currentTrack.request.getChannel().sendMessage("Player resumed.");
         } else if(event instanceof TrackStartEvent) {
             AdagioClient.sendMessage(currentTrack.request.getChannel(), "Now Playing: " + currentTrack.audioTrack.getInfo().title);
             logger.info("Track started: " + currentTrack.audioTrack.getInfo().title);
         } else if(event instanceof TrackEndEvent) {
-            currentTrack = queue.remove();
-            player.startTrack(currentTrack.audioTrack, false);
-            logger.info("Track ended: " + currentTrack.audioTrack.getInfo().title);
-        } else if(event instanceof TrackExceptionEvent) {
+            if (queue.isEmpty()) {
+                currentTrack = null;
+                // Disconnect in a minute if there are still no songs scheduled.
+                new java.util.Timer().schedule(
+                        new java.util.TimerTask() {
+                            @Override
+                            public void run() {
+                                if (currentTrack == null) {
+                                    guild.getConnectedVoiceChannel().leave();
+                                    logger.info("Disconnected from voice '" + guild.getConnectedVoiceChannel().getName() + "' for inactivity.");
+                                }
+                            }
+                        },
+                        60000
+                );
+            } else {
+                currentTrack = queue.remove();
+                player.startTrack(currentTrack.audioTrack, false);
+                logger.info("Track ended: " + currentTrack.audioTrack.getInfo().title);
+            }
+        } else if (event instanceof TrackExceptionEvent) {
             logger.warn("Track Exception in guild: " + guild.getStringID() +
                     ", track: '" + ((TrackExceptionEvent)event).track + "'",
                     ((TrackExceptionEvent)event).exception);
         }
     }
 
+    public boolean hasSong() {
+        return currentTrack != null;
+    }
+
     public void queue(IMessage request, AudioTrack audioTrack) {
-        if (!player.startTrack(audioTrack, true)) {
+        if (currentTrack == null) {
+            currentTrack = new AudioTrackWithRequest(audioTrack, request);
+            player.startTrack(audioTrack, true);
+        } else {
             //TODO: Message
             queue.offer(new AudioTrackWithRequest(audioTrack, request));
         }
+    }
+
+    public void skip() {
+        player.stopTrack();
     }
 }
