@@ -1,0 +1,5 @@
+#This file contains the org.twobits.adagio.configuration for Adagio.
+#Rename this file to config.properties or the bot will not work.
+#API Client info
+token = INSERT TOKEN HERE
+prefix = !

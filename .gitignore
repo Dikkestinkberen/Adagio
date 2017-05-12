@@ -1,7 +1,7 @@
-# Compiled class file
+# Compiled class audioFile
 *.class
 
-# Log file
+# Log audioFile
 *.log
 
 # BlueJ files
@@ -65,5 +65,10 @@ crashlytics.properties
 crashlytics-build.properties
 fabric.properties
 
-# log file
+# log audioFile
 log.txt
+/youtube-dl.exe
+/.idea/kotlinc.xml
+/ffprobe.exe
+/ffmpeg.exe
+/src/main/resources/config.properties

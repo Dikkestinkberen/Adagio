@@ -1,18 +1,29 @@
 package org.twobits.adagio.client;
 
+import com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler;
+import com.sedmelluq.discord.lavaplayer.player.AudioPlayer;
+import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager;
+import com.sedmelluq.discord.lavaplayer.player.DefaultAudioPlayerManager;
+import com.sedmelluq.discord.lavaplayer.source.AudioSourceManagers;
+import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
+import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist;
+import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.twobits.adagio.audio.GuildMusicManager;
 import org.twobits.adagio.configuration.Config;
 import sx.blah.discord.api.ClientBuilder;
 import sx.blah.discord.api.IDiscordClient;
 import sx.blah.discord.api.events.EventSubscriber;
-import sx.blah.discord.handle.impl.events.MessageReceivedEvent;
-import sx.blah.discord.handle.obj.IChannel;
-import sx.blah.discord.handle.obj.IMessage;
-import sx.blah.discord.handle.obj.IUser;
+import sx.blah.discord.handle.impl.events.ReadyEvent;
+import sx.blah.discord.handle.impl.events.guild.channel.message.MessageReceivedEvent;
+import sx.blah.discord.handle.obj.*;
 import sx.blah.discord.util.DiscordException;
 import sx.blah.discord.util.MissingPermissionsException;
 import sx.blah.discord.util.RateLimitException;
+
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * The base class that handles logging in, threading and the like.
@@ -20,13 +31,16 @@ import sx.blah.discord.util.RateLimitException;
 public class AdagioClient {
     @SuppressWarnings("unused")
     private final static Logger logger = LoggerFactory.getLogger(AdagioClient.class);
+    private static IDiscordClient client;
+    private final static Map<Long, GuildMusicManager> musicManagers = new ConcurrentHashMap<>();
+    private final static Map<Long, IVoiceChannel> currentVoiceChannels = new ConcurrentHashMap<>();
+    private static AudioPlayerManager playerManager;
 
     public static void init() throws DiscordException {
         boolean done = false;
 
-        IDiscordClient client = new ClientBuilder().withToken(Config.TOKEN).build();
+        client = new ClientBuilder().withToken(Config.TOKEN).build();
         client.getDispatcher().registerListener(new AdagioClient());
-
         while (!done) {
             try {
                 logger.info("Logging in...");
@@ -44,7 +58,68 @@ public class AdagioClient {
         }
     }
 
-    @SuppressWarnings("unused")
+    @EventSubscriber
+    public void onReady(ReadyEvent event) {
+        playerManager = new DefaultAudioPlayerManager();
+        AudioSourceManagers.registerRemoteSources(playerManager);
+    }
+
+    private synchronized GuildMusicManager getGuildAudioPlayer(IGuild guild) {
+        long guildId = guild.getLongID();
+        GuildMusicManager musicManager = musicManagers.computeIfAbsent(guildId,
+                k -> new GuildMusicManager(playerManager, guild));
+
+        guild.getAudioManager().setAudioProvider(musicManager.getAudioProvider());
+
+        return musicManager;
+    }
+
+    private static IVoiceChannel getCurrentVoiceChannel(IGuild guild) {
+        return currentVoiceChannels.get(guild.getLongID());
+    }
+
+    private static void setCurrentVoiceChannel(IGuild guild, IVoiceChannel channel) {
+        if (channel != null) {
+            currentVoiceChannels.put(guild.getLongID(), channel);
+        } else {
+            currentVoiceChannels.remove(guild.getLongID());
+        }
+    }
+
+    private void loadAndPlay(IMessage request, String trackUrl) {
+        GuildMusicManager musicManager = getGuildAudioPlayer(request.getGuild());
+
+        playerManager.loadItemOrdered(musicManager, trackUrl, new AudioLoadResultHandler() {
+            @Override
+            public void trackLoaded(AudioTrack audioTrack) {
+                //Song added to queue, can now be played.
+                sendMessage(request.getChannel(), "Song added to queue: " + audioTrack.getInfo().title);
+
+                play(request, musicManager, audioTrack);
+            }
+
+            @Override
+            public void playlistLoaded(AudioPlaylist audioPlaylist) {
+
+            }
+
+            @Override
+            public void noMatches() {
+                logger.info("No matches.");
+            }
+
+            @Override
+            public void loadFailed(FriendlyException e) {
+                logger.info("Load failed: ", e);
+            }
+        });
+    }
+
+    private void play(IMessage request, GuildMusicManager musicManager, AudioTrack track) {
+        getCurrentVoiceChannel(request.getGuild()).join();
+        musicManager.scheduler.queue(request, track);
+    }
+
     @EventSubscriber
     public void onMessage(MessageReceivedEvent event) throws MissingPermissionsException, DiscordException {
         IMessage message = event.getMessage();
@@ -53,10 +128,32 @@ public class AdagioClient {
             return;
         }
 
-        sendMessage(message.getChannel(), user.mention(true) + " said: \"" + message.getContent() + "\"");
+        String content = message.getContent();
+        if (!content.startsWith(Config.PREFIX)) {
+            return;
+        }
+
+        content = content.substring(Config.PREFIX.length());
+        String command = content.substring(0, content.indexOf(' '));
+        switch (command) {
+            case "play":
+                logger.debug("Play command issued: " + content);
+                IVoiceChannel requesterVoiceChannel = user.getVoiceStateForGuild(message.getGuild()).getChannel();
+                IVoiceChannel currentVoiceChannel = getCurrentVoiceChannel(message.getGuild());
+                AudioPlayer player = getGuildAudioPlayer(message.getGuild()).player;
+                if (requesterVoiceChannel == null) {
+                    sendMessage(message.getChannel(), "You are not connected to a voice channel.");
+                } else if (player.getPlayingTrack() != null && requesterVoiceChannel != currentVoiceChannel) {
+                    sendMessage(message.getChannel(), "The bot is already playing in a different channel.");
+                } else {
+                    logger.debug("Accepted play command.");
+                    setCurrentVoiceChannel(message.getGuild(), requesterVoiceChannel);
+                    loadAndPlay(message, content.substring(5));
+                }
+        }
     }
 
-    @SuppressWarnings("UnusedReturnValue")
+    @SuppressWarnings({"UnusedReturnValue", "unused"})
     public static boolean sendMessage(IChannel channel, String message) throws MissingPermissionsException, DiscordException {
         try {
             logger.debug(String.format("Sending message:\t%s", message));
